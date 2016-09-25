@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # CherryMusic - a standalone music server
-# Copyright (c) 2012 - 2014 Tom Wallroth & Tilman Boerner
+# Copyright (c) 2012 - 2016 Tom Wallroth & Tilman Boerner
 #
 # Project page:
 #   http://fomori.org/cherrymusic/
@@ -34,6 +34,7 @@ import sys
 
 from tinytag import TinyTag
 
+
 class Metainfo():
     def __init__(self, artist='', album='', title='', track='', length=0):
         self.artist = artist
@@ -41,14 +42,16 @@ class Metainfo():
         self.title = title
         self.track = track
         self.length = length
+
     def dict(self):
         return {
-        'artist': self.artist,
-        'album': self.album,
-        'title': self.title,
-        'track': self.track,
-        'length': self.length
+            'artist': self.artist,
+            'album': self.album,
+            'title': self.title,
+            'track': self.track,
+            'length': self.length
         }
+
 
 def getSongInfo(filepath):
     try:

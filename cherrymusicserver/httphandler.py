@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # CherryMusic - a standalone music server
-# Copyright (c) 2012 - 2014 Tom Wallroth & Tilman Boerner
+# Copyright (c) 2012 - 2016 Tom Wallroth & Tilman Boerner
 #
 # Project page:
 #   http://fomori.org/cherrymusic/
@@ -37,6 +37,7 @@ import os  # shouldn't have to list any folder in the future!
 import json
 import cherrypy
 import codecs
+import re
 import sys
 
 try:
@@ -50,6 +51,7 @@ except ImportError:
 
 
 import audiotranscode
+from tinytag import TinyTag
 
 from cherrymusicserver import userdb
 from cherrymusicserver import log
@@ -127,7 +129,10 @@ class HTTPHandler(object):
         ssl_enabled = cherry.config['server.ssl_enabled']
         if ssl_enabled and not is_secure_connection:
             log.d(_('Not secure, redirecting...'))
-            ip = ipAndPort[:ipAndPort.rindex(':')]
+            try:
+                ip = ipAndPort[:ipAndPort.rindex(':')]
+            except ValueError:
+                ip = ipAndPort  # when using port 80: port is not in ipAndPort
             url = 'https://' + ip + ':' + str(cherry.config['server.ssl_port'])
             if redirect_unencrypted:
                 raise cherrypy.HTTPRedirect(url, 302)
@@ -255,12 +260,12 @@ class HTTPHandler(object):
             starttime = int(params.pop('starttime', 0))
 
             transcoder = audiotranscode.AudioTranscode()
-            mimetype = transcoder.mimeType(newformat)
+            mimetype = audiotranscode.mime_type(newformat)
             cherrypy.response.headers["Content-Type"] = mimetype
             try:
-                return transcoder.transcodeStream(fullpath, newformat,
+                return transcoder.transcode_stream(fullpath, newformat,
                             bitrate=bitrate, starttime=starttime)
-            except audiotranscode.TranscodeError as e:
+            except (audiotranscode.TranscodeError, IOError) as e:
                 raise cherrypy.HTTPError(404, e.value)
     trans.exposed = True
     trans._cp_config = {'response.stream': True}
@@ -299,7 +304,11 @@ class HTTPHandler(object):
                 return 'not_permitted'
         # make sure nobody tries to escape from basedir
         for f in filelist:
-            if '/../' in f:
+            # don't allow to traverse up in the file system
+            if '/../' in f or f.startswith('../'):
+                return 'invalid_file'
+            # CVE-2015-8309: do not allow absolute file paths
+            if os.path.isabs(f):
                 return 'invalid_file'
         # make sure all files are smaller than maximum download size
         size_limit = cherry.config['media.maximum_download_size']
@@ -365,6 +374,7 @@ class HTTPHandler(object):
         uo = self.useroptions.forUser(self.getUserId())
         uo.setOption(optionkey, optionval)
         return "success"
+
     def api_setuseroptionfor(self, userid, optionkey, optionval):
         if cherrypy.session['admin']:
             uo = self.useroptions.forUser(userid)
@@ -392,7 +402,24 @@ class HTTPHandler(object):
 
     def api_fetchalbumart(self, directory):
         _save_and_release_session()
-        default_folder_image = "/res/img/folder.png"
+        default_folder_image = "../res/img/folder.png"
+
+        log.i('Fetching album art for: %s' % directory)
+        filepath = os.path.join(cherry.config['media.basedir'], directory)
+
+        if os.path.isfile(filepath):
+            # if the given path is a file, try to get the image from ID3
+            tag = TinyTag.get(filepath, image=True)
+            image_data = tag.get_image()
+            if image_data:
+                log.d('Image found in tag.')
+                header = {'Content-Type': 'image/jpg', 'Content-Length': len(image_data)}
+                cherrypy.response.headers.update(header)
+                return image_data
+            else:
+                # if the file does not contain an image, display the image of the
+                # parent directory
+                directory = os.path.dirname(directory)
 
         #try getting a cached album art image
         b64imgpath = albumArtFilePath(directory)
@@ -413,10 +440,26 @@ class HTTPHandler(object):
             cherrypy.response.headers.update(header)
             return data
         elif cherry.config['media.fetch_album_art']:
+            # maximum of files to try to fetch metadata for albumart keywords
+            METADATA_ALBUMART_MAX_FILES = 10
             #fetch album art from online source
             try:
                 foldername = os.path.basename(directory)
                 keywords = foldername
+                # remove any odd characters from the folder name
+                keywords = re.sub('[^A-Za-z\s]', ' ', keywords)
+                # try getting metadata from files in the folder for a more
+                # accurate match
+                files = os.listdir(localpath)
+                for i, filename in enumerate(files):
+                    if i >= METADATA_ALBUMART_MAX_FILES:
+                        break
+                    path = os.path.join(localpath, filename)
+                    metadata = metainfo.getSongInfo(path)
+                    if metadata.artist and metadata.album:
+                        keywords = '{} - {}'.format(metadata.artist, metadata.album)
+                        break
+
                 log.i(_("Fetching album art for keywords {keywords!r}").format(keywords=keywords))
                 header, data = fetcher.fetch(keywords)
                 if header:
@@ -445,11 +488,17 @@ class HTTPHandler(object):
             f.write(data)
 
     def api_compactlistdir(self, directory, filterstr=None):
-        files_to_list = self.model.listdir(directory, filterstr)
+        try:
+            files_to_list = self.model.listdir(directory, filterstr)
+        except ValueError:
+            raise cherrypy.HTTPError(400, 'Bad Request')
         return [entry.to_dict() for entry in files_to_list]
 
-    def api_listdir(self, directory=''):
-        return [entry.to_dict() for entry in self.model.listdir(directory)]
+    def api_listdir(self, directory):
+        try:
+            return [entry.to_dict() for entry in self.model.listdir(directory)]
+        except ValueError:
+            raise cherrypy.HTTPError(400, 'Bad Request')
 
     def api_search(self, searchstring):
         if not searchstring.strip():
@@ -586,14 +635,21 @@ class HTTPHandler(object):
     def api_showplaylists(self, sortby="created", filterby=''):
         playlists = self.playlistdb.showPlaylists(self.getUserId(), filterby)
         curr_time = int(time.time())
+        is_reverse = False
         #translate userids to usernames:
         for pl in playlists:
             pl['username'] = self.userdb.getNameById(pl['userid'])
             pl['type'] = 'playlist'
             pl['age'] = curr_time - pl['created']
-        if not sortby in ('username', 'age', 'title'):
+        if sortby[0] == '-':
+            is_reverse = True
+            sortby = sortby[1:]
+        if not sortby in ('username', 'age', 'title', 'default'):
             sortby = 'created'
-        playlists = sorted(playlists, key=lambda x: x[sortby])
+        if sortby == 'default':
+            sortby = 'age'
+            is_reverse = False
+        playlists = sorted(playlists, key=lambda x: x[sortby], reverse = is_reverse)
         return playlists
 
     def api_logout(self):
@@ -682,9 +738,9 @@ class HTTPHandler(object):
             'version': cherry.REPO_VERSION or cherry.VERSION,
         }
         if cherry.config['media.transcode']:
-            decoders = self.model.transcoder.availableDecoderFormats()
+            decoders = list(self.model.transcoder.available_decoder_formats())
             clientconfigkeys['getdecoders'] = decoders
-            encoders = self.model.transcoder.availableEncoderFormats()
+            encoders = list(self.model.transcoder.available_encoder_formats())
             clientconfigkeys['getencoders'] = encoders
         else:
             clientconfigkeys['getdecoders'] = []

@@ -1,6 +1,63 @@
 Changelog
 ---------
 
+0.38.0 (2016-09-17)
+ - FEATURE: Use file metadata when album art fetching (thanks mattss)
+ - IMPROVEMENT: Switch to iTunes API for album art fetching (thanks mattss)
+ - IMPROVEMENT: Better filtering of directory names when fetching album art (thanks mattss)
+
+0.37.2 (2016-08-07)
+ - FIXED: more fixes for cherrypy detection (thanks Isgar)
+
+0.37.1 (2016-07-30)
+ - FIXED: crash on start when not able to detect cherrypy version
+
+0.37.0 (2016-07-09)
+ - FEATURE: support for reading MP4 tags
+ - FIXED: unicode crash when using cherrypy > 5.4
+ - FIXED: running the server directly on port 80
+ - FIXED: transcoding of OGG files with other samplerates than 44khz
+ - IMPROVEMENT: documented --deleteuser and --changepassword switches
+ - IMPROVEMENT: don't show remaining time in shuffle mode
+
+0.36.0 (2015-11-21)
+ - FIXED: *Security* CVE-2015-8309 Download of arbitrary files by logged in users (thanks 
+feedersec)
+ - FIXED: *Security* CVE-2015-8310 XSS attack by logged-in users (thanks feedersec)
+ - FIXED: OGA files are now correctly recognized as ogg-audio files
+ - FIXED: Sorting tracks by track number correctly
+ - FIXED: Cannot load playlists containing single quotes
+ - FEATURE: allow reverse-sorting of playlists (thanks pando85)
+ - FEATURE: Enabled support of ffmpeg to decode ALAC files
+ - FEATURE: Added optional support for Pillow as Image Library
+ - IMPROVEMENT: disabled confirm-to-quit message for playlist downloads
+ - IMPROVEMENT: Updated TinyTag to version 0.10.1 (much faster ID3 parsing)
+ - IMPROVEMENT: Predictable selection of album-art images (thanks lzh9102)
+ - FIXED: Removed restrictions for passwords created in CLI
+
+0.35.2 (2015-04-20)
+ - FIXED: server not starting on windows
+
+0.35.1 (2015-04-10)
+ - FIXED: server not starting for python versions below 3.3
+
+0.35.0 (2015-03-22)
+ - FEATURE: Opus transcoding support (thanks to qqueue)
+ - FEATURE: Support for media keys (thanks to cheese83)
+ - FIXED: File browser crash, when listing unreadable files (thanks to Tom Clegg)
+ - FIXED: Album art fetching breaking for very file paths (thanks to Che-Huai Lin)
+ - FIXED: Broken file listing if basedir does not end with a slash
+ - FIXED: Proper cover art display in safari (thanks to yukip)
+ - FIXED: Searching for terms ending in non ASCII-characters
+ - FIXED: keyboard shortcut settings for unrecognized keys (thanks cheese83)
+ - IMPROVEMENT: devel git version detection (thanks to MartijnRas)
+ - IMPROVEMENT: More transcoding quality settings (thanks to Druneau)
+ - IMPROVEMENT: Show first track after loading playlist
+ - IMPROVEMENT: Allow indexing of symlinked files
+
+0.34.1 (2014-12-17)
+ - FIXED: Queue not visible due to outdated jPlayer
+
 0.34.0 (2014-12-08)
 
  - FEATURE: sorting of queue and open playlists via dropdown menu
